@@ -118,49 +118,77 @@ def save_to_csv(data_list):
         logger.warning("No data to save")
         return
     
+    logger.info(f"\n>>> Starting to save {len(data_list)} rows...")
+    
     # ایجاد فولدر اگر وجود نداشته باشد
     if not os.path.exists(DATA_FOLDER):
+        logger.info(f"Creating folder: {DATA_FOLDER}")
         os.makedirs(DATA_FOLDER)
-        logger.info(f"Created folder: {DATA_FOLDER}")
+        logger.info(f"✓ Created folder: {DATA_FOLDER}")
+    else:
+        logger.info(f"✓ Folder exists: {DATA_FOLDER}")
     
     # ساخت نام فایل با timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     csv_filename = f"opc_data_{timestamp}.csv"
     csv_file = os.path.join(DATA_FOLDER, csv_filename)
     
-    # نوشتن در فایل CSV جدید
-    with open(csv_file, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['timestamp'] + list(NODES.keys()) + list(STATUS_NODES.keys())
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
-        # نوشتن هدر
-        writer.writeheader()
-        
-        # نوشتن همه ردیف‌های داده
-        for data in data_list:
-            # کپی کردن data برای جلوگیری از تغییر داده اصلی
-            row_data = {}
-            row_data['timestamp'] = data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            
-            # حذف فلگ تغییر از داده
-            data_copy = data.copy()
-            data_copy.pop('_status_changed', None)
-            
-            # همیشه NODES را اضافه می‌کنیم
-            for name in NODES.keys():
-                row_data[name] = data_copy.get(name, '')
-            
-            # اضافه کردن STATUS_NODES
-            for name in STATUS_NODES.keys():
-                row_data[name] = data_copy.get(name, '')
-            
-            # نوشتن ردیف
-            writer.writerow(row_data)
+    logger.info(f"CSV File path: {csv_file}")
+    logger.info(f"Full path: {os.path.abspath(csv_file)}")
     
-    first_timestamp = data_list[0].get('timestamp', '')
-    last_timestamp = data_list[-1].get('timestamp', '')
-    logger.info(f"✓ Data saved to {csv_file}")
-    logger.info(f"  Rows: {len(data_list)} (from {first_timestamp} to {last_timestamp})")
+    try:
+        # نوشتن در فایل CSV جدید
+        logger.info(f"Opening file for writing...")
+        with open(csv_file, 'w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['timestamp'] + list(NODES.keys()) + list(STATUS_NODES.keys())
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            # نوشتن هدر
+            logger.info(f"Writing header...")
+            writer.writeheader()
+            
+            # نوشتن همه ردیف‌های داده
+            logger.info(f"Writing {len(data_list)} data rows...")
+            for i, data in enumerate(data_list):
+                # کپی کردن data برای جلوگیری از تغییر داده اصلی
+                row_data = {}
+                row_data['timestamp'] = data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                
+                # حذف فلگ تغییر از داده
+                data_copy = data.copy()
+                data_copy.pop('_status_changed', None)
+                
+                # همیشه NODES را اضافه می‌کنیم
+                for name in NODES.keys():
+                    row_data[name] = data_copy.get(name, '')
+                
+                # اضافه کردن STATUS_NODES
+                for name in STATUS_NODES.keys():
+                    row_data[name] = data_copy.get(name, '')
+                
+                # نوشتن ردیف
+                writer.writerow(row_data)
+                if (i+1) % 10 == 0:
+                    logger.debug(f"  Written {i+1}/{len(data_list)} rows")
+        
+        logger.info(f"✓ File written successfully")
+        
+        # بررسی فایل ایجاد شده
+        if os.path.exists(csv_file):
+            file_size = os.path.getsize(csv_file)
+            logger.info(f"✓ File exists: {csv_file} ({file_size} bytes)")
+        else:
+            logger.error(f"ERROR: File not created: {csv_file}")
+            return
+        
+        first_timestamp = data_list[0].get('timestamp', '')
+        last_timestamp = data_list[-1].get('timestamp', '')
+        logger.info(f"✓ Data saved to {csv_file}")
+        logger.info(f"  Rows: {len(data_list)} (from {first_timestamp} to {last_timestamp})\n")
+        
+    except Exception as e:
+        logger.error(f"ERROR saving file: {str(e)}")
+        logger.error(traceback.format_exc())
 
 def main():
     """تابع اصلی"""
@@ -257,7 +285,8 @@ def main():
                     all_data.append(data)
                     elapsed = int(time.time() - start_time)
                     remaining = SAVE_INTERVAL - elapsed
-                    logger.info(f"Data read OK. Time: {elapsed}s / {SAVE_INTERVAL}s - Samples: {len(all_data)}")
+                    if len(all_data) % 5 == 0:  # لاگ هر 5 ثانیه
+                        logger.info(f"Data read OK. Time: {elapsed}s / {SAVE_INTERVAL}s - Samples: {len(all_data)}")
                 
                 # صبر قبل از خواندن بعدی (sample rate)
                 time.sleep(READ_INTERVAL)
