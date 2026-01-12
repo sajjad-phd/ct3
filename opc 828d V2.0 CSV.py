@@ -3,6 +3,20 @@ import csv
 import os
 from datetime import datetime
 import time
+import logging
+import sys
+import traceback
+
+# تنظیم logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('opc_logger.log')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # آدرس سرور OPC UA
 OPC_URL = "opc.tcp://10.2.67.200:4840"
@@ -71,11 +85,9 @@ def read_opcua_data():
         client.set_user(OPC_USERNAME)
         client.set_password(OPC_PASSWORD)
 
-        # اتصال بدون تنظیمات امنیتی
-        # اگر نیاز به امنیت دارید، می‌توانید تنظیمات را تغییر دهید
-        # client.set_security_string("None")
-
+        logger.debug(f"Attempting to connect to {OPC_URL}...")
         client.connect()
+        logger.debug("✓ Connected to OPC UA server")
         try:
             # خواندن NODES (همیشه ذخیره می‌شوند)
             for name, nodeid in NODES.items():
@@ -105,7 +117,8 @@ def read_opcua_data():
         finally:
             client.disconnect()
     except Exception as e:
-        print(f"OPC UA Connection Error: {str(e)}")
+        logger.error(f"OPC UA Connection Error: {str(e)}")
+        logger.error(traceback.format_exc())
         data = {"Connection": f"Error: {str(e)}"}
     return data
 
@@ -156,34 +169,38 @@ def save_to_csv(data_list):
     
     first_timestamp = data_list[0].get('timestamp', '')
     last_timestamp = data_list[-1].get('timestamp', '')
-    print(f"Data saved to {csv_file}: {len(data_list)} rows (from {first_timestamp} to {last_timestamp})")
+    logger.info(f"✓ Data saved to {csv_file}")
+    logger.info(f"  Rows: {len(data_list)} (from {first_timestamp} to {last_timestamp})")
 
 def main():
     """تابع اصلی"""
-    print("Starting OPC UA Data Logger...")
-    print(f"Connecting to: {OPC_URL}")
-    print(f"Monitoring {len(NODES)} indexed nodes and {len(STATUS_NODES)} status nodes")
-    print(f"Sample rate: Every {READ_INTERVAL} seconds")
-    print(f"Saving interval: Every {SAVE_INTERVAL} seconds")
-    print(f"Each save will create a new CSV file with timestamp")
-    print(f"Files will be saved in: {DATA_FOLDER}/")
+    logger.info("=" * 70)
+    logger.info("Starting OPC UA Data Logger...")
+    logger.info(f"Connecting to: {OPC_URL}")
+    logger.info(f"Username: {OPC_USERNAME}")
+    logger.info(f"Monitoring {len(NODES)} indexed nodes and {len(STATUS_NODES)} status nodes")
+    logger.info(f"Sample rate: Every {READ_INTERVAL} seconds")
+    logger.info(f"Saving interval: Every {SAVE_INTERVAL} seconds")
+    logger.info("=" * 70)
     
     # بررسی مسیر فولدر
     abs_path = os.path.abspath(DATA_FOLDER)
-    print(f"Absolute path: {abs_path}")
+    logger.info(f"Data folder: {DATA_FOLDER}")
+    logger.info(f"Absolute path: {abs_path}")
     
     # تست ایجاد فولدر
     if not os.path.exists(DATA_FOLDER):
         try:
             os.makedirs(DATA_FOLDER)
-            print(f"Created folder: {DATA_FOLDER}")
+            logger.info(f"✓ Created folder: {DATA_FOLDER}")
         except Exception as e:
-            print(f"Error creating folder: {str(e)}")
+            logger.error(f"ERROR creating folder: {str(e)}")
+            logger.error(traceback.format_exc())
             return
     else:
-        print(f"Folder exists: {DATA_FOLDER}")
+        logger.info(f"✓ Folder exists: {DATA_FOLDER}")
     
-    print("Press Ctrl+C to stop\n")
+    logger.info("Press Ctrl+C to stop\n")
     
     # تست اولیه: بررسی اینکه آیا می‌توانیم فایل بنویسیم
     try:
@@ -191,20 +208,22 @@ def main():
         with open(test_file, 'w') as f:
             f.write("test")
         os.remove(test_file)
-        print("Write test successful - folder is writable\n")
+        logger.info("✓ Write test successful - folder is writable\n")
     except Exception as e:
-        print(f"Write test failed: {str(e)}")
-        print("Cannot write to folder. Please check permissions.\n")
+        logger.error(f"Write test failed: {str(e)}")
+        logger.error("Cannot write to folder. Please check permissions.\n")
+        logger.error(traceback.format_exc())
         return
     
     file_count = 0
     try:
         while True:
-            print(f"\nReading data continuously... (File #{file_count + 1})")
+            logger.info(f"\n[File #{file_count + 1}] Reading data continuously...")
             
             # خواندن پیوسته با sample rate بالا تا زمان ذخیره
             start_time = time.time()
             all_data = []  # لیست همه داده‌های خوانده شده
+            connection_errors = 0
             
             while (time.time() - start_time) < SAVE_INTERVAL:
                 data = read_opcua_data()
@@ -212,8 +231,9 @@ def main():
                 # بررسی خطای اتصال
                 connection_error = data.get("Connection", "")
                 if connection_error and "Error:" in str(connection_error):
-                    print(f"Connection error: {connection_error}")
-                    print(f"Retrying in {READ_INTERVAL} seconds...")
+                    connection_errors += 1
+                    logger.warning(f"Connection error (attempt {connection_errors}): {connection_error}")
+                    logger.info(f"Retrying in {READ_INTERVAL} seconds...")
                 else:
                     # اضافه کردن timestamp به داده
                     data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -221,7 +241,7 @@ def main():
                     all_data.append(data)
                     elapsed = int(time.time() - start_time)
                     remaining = SAVE_INTERVAL - elapsed
-                    print(f"Data read successfully. Time: {elapsed}s / {SAVE_INTERVAL}s (Remaining: {remaining}s) - Total samples: {len(all_data)}")
+                    logger.debug(f"Data read OK. Time: {elapsed}s / {SAVE_INTERVAL}s - Samples: {len(all_data)}")
                 
                 # صبر قبل از خواندن بعدی (sample rate)
                 time.sleep(READ_INTERVAL)
@@ -231,16 +251,18 @@ def main():
                 try:
                     save_to_csv(all_data)
                     file_count += 1
-                    print(f"Waiting {SAVE_INTERVAL} seconds until next save...\n")
+                    logger.info(f"Waiting {SAVE_INTERVAL} seconds until next save...\n")
                 except Exception as save_error:
-                    print(f"Error saving file: {str(save_error)}")
-                    print(f"Retrying in {SAVE_INTERVAL} seconds...\n")
+                    logger.error(f"Error saving file: {str(save_error)}")
+                    logger.error(traceback.format_exc())
+                    logger.info(f"Retrying in {SAVE_INTERVAL} seconds...\n")
             else:
-                print(f"No valid data to save. Retrying in {SAVE_INTERVAL} seconds...\n")
+                logger.warning(f"No valid data to save. Retrying in {SAVE_INTERVAL} seconds...\n")
             
     except KeyboardInterrupt:
-        print("\nStopping data logger...")
-        print(f"Total {file_count} file(s) created during this session")
+        logger.info("\nStopping data logger...")
+        logger.info(f"Total {file_count} file(s) created during this session")
+        logger.info("=" * 70)
 
 if __name__ == '__main__':
     main()
