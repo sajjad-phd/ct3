@@ -13,8 +13,8 @@ from datetime import datetime
 
 # مسیر فایل‌های اسکریپت
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRIPT_1 = os.path.join(CURRENT_DIR, "fix_current_logger (2).py")
-SCRIPT_2 = os.path.join(CURRENT_DIR, "opc 828d V2.0 CSV.py")
+SCRIPT_1 = os.path.join(CURRENT_DIR, "current_logger.py")
+SCRIPT_2 = os.path.join(CURRENT_DIR, "opc_logger.py")
 
 # لیست برای نگهداری از processes
 processes = []

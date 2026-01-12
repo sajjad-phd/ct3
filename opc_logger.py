@@ -72,52 +72,42 @@ previous_status_values = {}
 SAVE_INTERVAL = 60
 
 # فاصله زمانی بین خواندن‌ها (sample rate - ثانیه)
-READ_INTERVAL = 60
+READ_INTERVAL = 1
 
 # مسیر فولدر ذخیره‌سازی
 DATA_FOLDER = "opc data"
 
-def read_opcua_data():
-    """خواندن داده‌ها از سرور OPC UA"""
+def read_opcua_data(client):
+    """خواندن داده‌ها از سرور OPC UA (با client موجود)"""
     data = {}
     try:
-        client = Client(OPC_URL)
-        client.set_user(OPC_USERNAME)
-        client.set_password(OPC_PASSWORD)
-
-        logger.debug(f"Attempting to connect to {OPC_URL}...")
-        client.connect()
-        logger.debug("✓ Connected to OPC UA server")
-        try:
-            # خواندن NODES (همیشه ذخیره می‌شوند)
-            for name, nodeid in NODES.items():
-                try:
-                    node = client.get_node(nodeid)
-                    value = node.get_value()
-                    data[name] = value
-                except Exception as e:
-                    data[name] = f"Error: {str(e)}"
-            
-            # خواندن STATUS_NODES (فقط وقتی تغییر کنند ذخیره می‌شوند)
-            status_changed = False
-            for name, nodeid in STATUS_NODES.items():
-                try:
-                    node = client.get_node(nodeid)
-                    value = node.get_value()
-                    # بررسی تغییر مقدار
-                    if name not in previous_status_values or previous_status_values[name] != value:
-                        status_changed = True
-                        previous_status_values[name] = value
-                    data[name] = value
-                except Exception as e:
-                    data[name] = f"Error: {str(e)}"
-            
-            data['_status_changed'] = status_changed
-            
-        finally:
-            client.disconnect()
+        # خواندن NODES (همیشه ذخیره می‌شوند)
+        for name, nodeid in NODES.items():
+            try:
+                node = client.get_node(nodeid)
+                value = node.get_value()
+                data[name] = value
+            except Exception as e:
+                data[name] = f"Error: {str(e)}"
+        
+        # خواندن STATUS_NODES
+        status_changed = False
+        for name, nodeid in STATUS_NODES.items():
+            try:
+                node = client.get_node(nodeid)
+                value = node.get_value()
+                # بررسی تغییر مقدار
+                if name not in previous_status_values or previous_status_values[name] != value:
+                    status_changed = True
+                    previous_status_values[name] = value
+                data[name] = value
+            except Exception as e:
+                data[name] = f"Error: {str(e)}"
+        
+        data['_status_changed'] = status_changed
+        
     except Exception as e:
-        logger.error(f"OPC UA Connection Error: {str(e)}")
+        logger.error(f"OPC UA Read Error: {str(e)}")
         logger.error(traceback.format_exc())
         data = {"Connection": f"Error: {str(e)}"}
     return data
@@ -125,13 +115,13 @@ def read_opcua_data():
 def save_to_csv(data_list):
     """ذخیره لیست داده‌ها در فایل CSV جدید با timestamp"""
     if not data_list:
-        print("No data to save")
+        logger.warning("No data to save")
         return
     
     # ایجاد فولدر اگر وجود نداشته باشد
     if not os.path.exists(DATA_FOLDER):
         os.makedirs(DATA_FOLDER)
-        print(f"Created folder: {DATA_FOLDER}")
+        logger.info(f"Created folder: {DATA_FOLDER}")
     
     # ساخت نام فایل با timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -216,6 +206,22 @@ def main():
         return
     
     file_count = 0
+    client = None
+    
+    try:
+        # اتصال یکبار در شروع
+        logger.info("\nConnecting to OPC UA server...")
+        client = Client(OPC_URL)
+        client.set_user(OPC_USERNAME)
+        client.set_password(OPC_PASSWORD)
+        client.connect()
+        logger.info("✓ Connected successfully!\n")
+        
+    except Exception as e:
+        logger.error(f"Failed to connect: {str(e)}")
+        logger.error(traceback.format_exc())
+        return
+    
     try:
         while True:
             logger.info(f"\n[File #{file_count + 1}] Reading data continuously...")
@@ -226,14 +232,24 @@ def main():
             connection_errors = 0
             
             while (time.time() - start_time) < SAVE_INTERVAL:
-                data = read_opcua_data()
+                data = read_opcua_data(client)
                 
                 # بررسی خطای اتصال
                 connection_error = data.get("Connection", "")
                 if connection_error and "Error:" in str(connection_error):
                     connection_errors += 1
-                    logger.warning(f"Connection error (attempt {connection_errors}): {connection_error}")
-                    logger.info(f"Retrying in {READ_INTERVAL} seconds...")
+                    logger.warning(f"Read error (attempt {connection_errors}): {connection_error}")
+                    # سعی مجدد برای اتصال
+                    try:
+                        client.disconnect()
+                        time.sleep(2)
+                        client = Client(OPC_URL)
+                        client.set_user(OPC_USERNAME)
+                        client.set_password(OPC_PASSWORD)
+                        client.connect()
+                        logger.info("✓ Reconnected successfully")
+                    except Exception as e:
+                        logger.error(f"Reconnection failed: {str(e)}")
                 else:
                     # اضافه کردن timestamp به داده
                     data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -241,7 +257,7 @@ def main():
                     all_data.append(data)
                     elapsed = int(time.time() - start_time)
                     remaining = SAVE_INTERVAL - elapsed
-                    logger.debug(f"Data read OK. Time: {elapsed}s / {SAVE_INTERVAL}s - Samples: {len(all_data)}")
+                    logger.info(f"Data read OK. Time: {elapsed}s / {SAVE_INTERVAL}s - Samples: {len(all_data)}")
                 
                 # صبر قبل از خواندن بعدی (sample rate)
                 time.sleep(READ_INTERVAL)
@@ -263,6 +279,13 @@ def main():
         logger.info("\nStopping data logger...")
         logger.info(f"Total {file_count} file(s) created during this session")
         logger.info("=" * 70)
+    finally:
+        if client is not None:
+            try:
+                client.disconnect()
+                logger.info("✓ Disconnected from OPC UA server")
+            except:
+                pass
 
 if __name__ == '__main__':
     main()

@@ -4,6 +4,9 @@
 # OPC UA Client for reading Sinumerik data
 opcua>=0.98.12
 
+# Cryptography for OPC UA secure connections
+cryptography>=3.4
+
 # Data acquisition HAT library for MCC118 current logger
 daqhats>=1.4.0
 
