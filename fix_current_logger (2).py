@@ -9,9 +9,9 @@ import os
 import numpy as np
 
 # === Configuration ===
-SAMPLE_RATE_HZ = 16000  # 10kHz for accurate AC measurement
+SAMPLE_RATE_HZ = 20000  # 10kHz for accurate AC measurement
 SAMPLES_PER_CHANNEL = 100  # Samples per read (10ms window at 10kHz)
-PERIOD_SEC = 150  # Save file every 10 seconds
+PERIOD_SEC = 150  # Save file every n seconds
 CH = 4  # Input channel (0-7) - CT connected to CH4
 CH_MASK = 1 << CH  # Convert to bit mask (CH4 = 0b00010000 = 16)
 SHUNT_OHM = 100.0  # CT shunt resistance
@@ -81,7 +81,7 @@ def acquire_with_rms():
     # Initialize file
     file = open(get_filename(), "w", newline="", encoding="utf-8")
     writer = csv.writer(file)
-    writer.writerow(["Time (s)", "RMS Current (A)", "Peak Current (A)", "Min Current (A)"])
+    writer.writerow(["Time (s)", "Timestamp", "RMS Current (A)"])
     
     period_start = time.time()
     t0 = time.time()
@@ -108,18 +108,14 @@ def acquire_with_rms():
                 
                 # Calculate RMS current
                 i_rms = calculate_rms(window)
-                
-                # Calculate peak and min for reference
-                i_peak = voltage_to_current(max(window))
-                i_min = voltage_to_current(min(window))
-                
-                # Write to file
+
+                # Write to file with precise timestamp
                 t_rel = time.time() - t0
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
                 writer.writerow([
                     f"{t_rel:.6f}",
-                    f"{i_rms:.6f}",
-                    f"{i_peak:.6f}",
-                    f"{i_min:.6f}"
+                    timestamp,
+                    f"{i_rms:.6f}"
                 ])
             
             # Check if period is over
@@ -133,7 +129,7 @@ def acquire_with_rms():
                 period_start = time.time()
                 file = open(get_filename(), "w", newline="", encoding="utf-8")
                 writer = csv.writer(file)
-                writer.writerow(["Time (s)", "RMS Current (A)", "Peak Current (A)", "Min Current (A)"])
+                writer.writerow(["Time (s)", "Timestamp", "RMS Current (A)"])
                 t0 = period_start
             
             # Small delay to prevent CPU overload
