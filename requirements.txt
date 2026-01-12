@@ -1,0 +1,11 @@
+# KSF Data Collection System - Python Dependencies
+# کتابخانه‌های مورد نیاز برای سیستم جمع‌آوری داده
+
+# OPC UA Client for reading Sinumerik data
+opcua>=0.98.12
+
+# Data acquisition HAT library for MCC118 current logger
+daqhats>=1.4.0
+
+# Numerical computing library for RMS calculations
+numpy>=1.21.0
