@@ -4,8 +4,11 @@
 
 set -e
 
+# دریافت مسیر مطلق این اسکریپت
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+echo "Working Directory: $PWD"
 
 # بررسی virtual environment
 if [ ! -d "venv" ]; then
@@ -23,6 +26,8 @@ if ! python -c "import opcua" 2>/dev/null; then
     pip install -r requirements.txt >/dev/null
 fi
 
+# تایید مسیر کاری
+echo "Current working directory: $(pwd)"
 echo ""
 echo "========================================"
 echo "KSF Data Collection System"

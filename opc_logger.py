@@ -13,7 +13,7 @@ logging.basicConfig(
     format='[%(asctime)s] %(levelname)s: %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('opc_logger.log')
+        logging.FileHandler(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'opc_logger.log'))
     ]
 )
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ SAVE_INTERVAL = 60
 READ_INTERVAL = 1
 
 # مسیر فولدر ذخیره‌سازی
-DATA_FOLDER = "opc data"
+DATA_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "opc data")
 
 def read_opcua_data(client):
     """خواندن داده‌ها از سرور OPC UA (با client موجود)"""
